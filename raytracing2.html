@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<title>CS3211: Raytracing by Curtis Tan Wei Jie</title>
+
+</head>
+<body>
+
+<script src="js/gpu.js"></script>
+<script src="js/globals.js"></script>
+<script src="js/scene.js"></script>
+
+<div id="user_pane">
+
+	<input type="button" value="Using GPU" onclick="return change(this);" />
+
+	<br><br>
+	
+	Select Object to Modify: 
+	<select id="object_selector" onclick="read_fields();">
+		<option value="0">Ball 1 (Center)</option>
+		<option value="1">Ball 2 (Vertical Orbit)</option>
+		<option value="2">Ball 3 (Horizontal Orbit)</option>
+	</select>
+	
+	<br>
+
+	<form>
+		Red Intensity: 
+		<input id="update_red" type="text" name="red"> &nbsp &nbsp &nbsp &nbsp
+		Green Intensity:  
+		<input id="update_green" type="text" name="green"> &nbsp &nbsp &nbsp &nbsp
+		Blue Intensity:  
+		<input id="update_blue" type="text" name="blue"><br>
+		Ambient: 
+		<input id="update_ambient" type="text" name="ambient"> &nbsp &nbsp &nbsp &nbsp
+		Diffuse: 
+		<input id="update_diffuse" type="text" name="diffuse"> &nbsp &nbsp &nbsp &nbsp
+		Specular: 
+		<input id="update_specular" type="text" name="specular"> &nbsp &nbsp &nbsp &nbsp
+		Opacity: 
+		<input id="update_opacity" type="text" name="opacity"> &nbsp &nbsp &nbsp &nbsp
+		Smoothness:  
+		<input id="update_smoothness" type="text" name="smoothness"><br>
+		Radius (max 1):    
+		<input id="update_radius" type="text" name="radius"><br>
+		
+		<input type="button" value="Update Fields" onclick="return update_fields();" />
+	</form>
+	
+<br>
+</div>
+
+<br>
+
+<div id="fps"></div>
+
+
+<script>
+
+	var selection = "gpu";
+
+    function change( el ) {
+		if ( el.value === "Using CPU" ) {
+			selection = "gpu";
+			el.value = "Using GPU";
+		} else {
+			selection = "cpu";
+			el.value = "Using CPU";
+		}
+    }
+	
+	var selected_object = Number(document.getElementById("object_selector").value);
+	
+	var red_textfield = document.getElementById("update_red");
+	var green_textfield = document.getElementById("update_green");
+	var blue_textfield = document.getElementById("update_blue");
+	
+	var ambient_textfield = document.getElementById("update_ambient");
+	var diffuse_textfield = document.getElementById("update_diffuse");
+	var specular_textfield = document.getElementById("update_specular");
+	var opacity_textfield = document.getElementById("update_opacity");
+	var smoothness_textfield = document.getElementById("update_smoothness");
+	
+	var radius_textfield = document.getElementById("update_radius");
+	
+	function read_fields() {
+		selected_object = Number(document.getElementById("object_selector").value);
+		
+		red_textfield.value = objects[1 + selected_object * object_skip + 2];
+		green_textfield.value = objects[1 + selected_object * object_skip + 3];
+		blue_textfield.value = objects[1 + selected_object * object_skip + 4];
+		
+		ambient_textfield.value = objects[1 + selected_object * object_skip + 7];
+		diffuse_textfield.value = objects[1 + selected_object * object_skip + 6];
+		specular_textfield.value = objects[1 + selected_object * object_skip + 5];
+		opacity_textfield.value = objects[1 + selected_object * object_skip + 8];
+		smoothness_textfield.value = objects[1 + selected_object * object_skip + 1];
+		
+		radius_textfield.value = objects[1 + selected_object * object_skip + 12];
+	}
+	
+	function update_fields() {
+	
+		selected_object = Number(document.getElementById("object_selector").value);
+		
+		var new_red_value = red_textfield.value;
+		var new_green_value = green_textfield.value;
+		var new_blue_value = blue_textfield.value;
+		
+		var new_ambient_value = ambient_textfield.value;
+		var new_diffuse_value = diffuse_textfield.value;
+		var new_specular_value = specular_textfield.value;
+		var new_opacity_value = opacity_textfield.value;
+		var new_smoothness_value = smoothness_textfield.value;
+		
+		var new_radius_value = radius_textfield.value;
+		
+		var all_new_values = [new_red_value, new_green_value, new_blue_value, 
+							  new_ambient_value, new_diffuse_value, new_specular_value, new_opacity_value, new_smoothness_value, 
+							  new_radius_value];
+							  
+		var all_index = [2, 3, 4, 7, 6, 5, 8, 1, 12];
+		
+		for (var i = 0; i < all_new_values.length; i++) {
+			if (!isNaN(all_new_values[i])) {
+				var numeric_value = Number(all_new_values[i]);
+				var lower_bound = 0;
+				var upper_bound = 1;
+				
+				// For smoothness
+				if (i === 7) {
+					upper_bound = 255;
+				}
+				
+				if (numeric_value < lower_bound) {
+					numeric_value = 0;
+				}
+				
+				if (numeric_value > upper_bound) {
+					numeric_value = 1;
+				}
+				
+				objects[1 + selected_object * object_skip + all_index[i]] = numeric_value;
+			}
+		}
+
+	}
+
+	read_fields();
+
+	function dot_product(x1, y1, z1, x2, y2, z2) {
+		return x1 * x2 + y1 * y2 + z1 * z2;
+	}
+	
+	function cross_x(y1, z1, y2, z2) {
+		return y1 * z2 - z1 * y2;
+	}
+
+	function cross_y(x1, z1, x2, z2) {
+		return z1 * x2 - x1 * z2;
+	}
+
+	function cross_z(x1, y1, x2, y2) {
+		return x1 * y2 - y1 * x2;
+	}
+
+	function normalize_x(x, y, z) {
+		var dist = Math.sqrt(x * x + y * y + z * z);
+		return x / dist;
+	}
+
+	function normalize_y(x, y, z) {
+		var dist = Math.sqrt(x * x + y * y + z * z);
+		return y / dist;
+	}
+
+	function normalize_z(x, y, z) {
+		var dist = Math.sqrt(x * x + y * y + z * z);
+		return z / dist;
+	}
+
+	function reflect_x(vx, vy, vz, nx, ny, nz) {
+		var v_dot_normal = vx * nx + vy * ny + vz * nz;
+		
+		var dx = vx - 2 * nx * v_dot_normal;
+		
+		return dx;
+	}
+
+	function reflect_y(vx, vy, vz, nx, ny, nz) {
+		var v_dot_normal = vx * nx + vy * ny + vz * nz;
+		
+		var dy = vy - 2 * ny * v_dot_normal;
+		
+		return dy;
+	}
+
+	function reflect_z(vx, vy, vz, nx, ny, nz) {
+		var v_dot_normal = vx * nx + vy * ny + vz * nz;
+		
+		var dz = vz - 2 * nz * v_dot_normal;
+		
+		return dz;
+	}
+	
+	function sphere_intersection(sphere_x, sphere_y, sphere_z, sphere_radius, camera_x, camera_y, camera_z, ray_x, ray_y, ray_z) {
+		var eye_to_center_x = sphere_x - camera_x;
+		var eye_to_center_y = sphere_y - camera_y;
+		var eye_to_center_z = sphere_z - camera_z;
+		
+		var vector_length = dot_product(eye_to_center_x, eye_to_center_y, eye_to_center_z, ray_x, ray_y, ray_z);
+		var to_center_length = dot_product(eye_to_center_x, eye_to_center_y, eye_to_center_z, eye_to_center_x, eye_to_center_y, eye_to_center_z);
+		var discriminant = (sphere_radius * sphere_radius) - to_center_length + (vector_length * vector_length);
+		
+		if (discriminant < 0) {
+			return -1;
+		} else {
+			return vector_length - Math.sqrt(discriminant);
+		}
+	}
+	
+	function ambient_intensity(illuminance, light_color, material_ambient, material_color) {
+		return illuminance * light_color * material_ambient * material_color;
+	}
+	
+	function diffuse_intensity(illuminance, light_color, material_diffuse, material_color, light_x, light_y, light_z, norm_x, norm_y, norm_z) {
+		var has_diffuse = light_x * norm_x + light_y * norm_y + light_z * norm_z;
+		
+		if (has_diffuse < 0) {
+			return 0;
+		} else {
+			return illuminance * has_diffuse * light_color * material_diffuse * material_color;
+		}
+	}
+	
+	function specular_intensity(illuminance, light_color, material_specular, material_color, reflect_x, reflect_y, reflect_z, view_x, view_y, view_z, smoothness) {
+		var has_specular = reflect_x * view_x + reflect_y * view_y + reflect_z * view_z;
+		
+		if (has_specular < 0) {
+			return 0;
+		} else {
+			return illuminance * Math.pow(has_specular, smoothness) * light_color * material_specular * material_color;
+		}
+	}
+
+	var gpu = new GPU();
+	
+	gpu.addFunction(dot_product);
+	gpu.addFunction(cross_x);
+	gpu.addFunction(cross_y);
+	gpu.addFunction(cross_z);
+	gpu.addFunction(normalize_x);
+	gpu.addFunction(normalize_y);
+	gpu.addFunction(normalize_z);
+	gpu.addFunction(reflect_x);
+	gpu.addFunction(reflect_y);
+	gpu.addFunction(reflect_z);
+	gpu.addFunction(sphere_intersection);
+	gpu.addFunction(ambient_intensity);
+	gpu.addFunction(diffuse_intensity);
+	gpu.addFunction(specular_intensity);
+	
+	var width = 800;
+	var height = 600;
+	
+	var norm_cam_x = normalize_x(camera[3], camera[4], camera[5]);
+	var norm_cam_y = normalize_y(camera[3], camera[4], camera[5]);
+	var norm_cam_z = normalize_z(camera[3], camera[4], camera[5]);
+		
+	var vp_right_x = cross_x(norm_cam_y, norm_cam_z, 1, 0);
+	var vp_right_y = cross_y(norm_cam_x, norm_cam_z, 0, 0);
+	var vp_right_z = cross_z(norm_cam_x, norm_cam_y, 0, 1);
+		
+	var norm_vp_right_x = normalize_x(vp_right_x, vp_right_y, vp_right_z);
+	var norm_vp_right_y = normalize_y(vp_right_x, vp_right_y, vp_right_z);
+	var norm_vp_right_z = normalize_z(vp_right_x, vp_right_y, vp_right_z);
+		
+	var vp_up_x = cross_x(norm_vp_right_y, norm_vp_right_z, norm_cam_y, norm_cam_z);
+	var vp_up_y = cross_y(norm_vp_right_x, norm_vp_right_z, norm_cam_x, norm_cam_z);
+	var vp_up_z = cross_z(norm_vp_right_x, norm_vp_right_y, norm_cam_x, norm_cam_y);
+		
+	var norm_vp_up_x = normalize_x(vp_up_x, vp_up_y, vp_up_z);
+	var norm_vp_up_y = normalize_y(vp_up_x, vp_up_y, vp_up_z);
+	var norm_vp_up_z = normalize_z(vp_up_x, vp_up_y, vp_up_z);
+	
+	function create_opt(mode) {
+	
+		var opt = {
+			dimensions: [width, height],
+			debug: true,
+			graphical: true,
+			safeTextureReadHack: false,
+			constants: { 
+				LIGHTCOUNT: number_of_lights, OBJCOUNT: number_of_objects, LIGHT_SKIP: light_skip, OBJECT_SKIP: object_skip,  
+				UP_VECTOR: UP_VECTOR, ZERO_VECTOR: ZERO_VECTOR, 
+				MATH_PI: MATH_PI, INFINITY: -1, HEIGHT: height, WIDTH: width, 
+				EMPTY: ObjTyp.EMPTY,         SPHERE: ObjTyp.SPHERE,   CUBOID: ObjTyp.CUBOID, 
+				CYLINDER: ObjTyp.CYLINDER,   CONE: ObjTyp.CONE,       TRIANGLE: ObjTyp.TRIANGLE 
+			},
+			mode: mode
+		};
+		
+		return opt;
+	}
+	
+	
+	function ray_tracer(camera, lights, objects) {
+	
+		// We set the bottom leftmost pixel as the (0, 0) coordinate on the canvas
+		// We say that the entire canvas has a field_of_field degree of sweep from
+		// the bottommost coordinate to the topmost coordinate, and
+		// from the leftmost coordinate to the rightmost coordinate
+		
+		// Hence, the camera.direction vector represents the unaltered vector
+		// of the camera at (width / 2, height / 2);
+		
+		// Forward constant to move forward pointer over unused value
+		var c = 1;
+		
+		// First, we would like to normalize our eye_vector
+		var norm_cam_x = normalize_x(camera[3], camera[4], camera[5]);
+		var norm_cam_y = normalize_y(camera[3], camera[4], camera[5]);
+		var norm_cam_z = normalize_z(camera[3], camera[4], camera[5]);
+		
+		var vp_right_x = cross_x(norm_cam_y, norm_cam_z, 1, 0);
+		var vp_right_y = cross_y(norm_cam_x, norm_cam_z, 0, 0);
+		var vp_right_z = cross_z(norm_cam_x, norm_cam_y, 0, 1);
+		
+		// TODO
+		// var dot_vp_right = dot_product(vp_right_x, vp_right_y, vp_right_z);
+		
+		var norm_vp_right_x = normalize_x(vp_right_x, vp_right_y, vp_right_z);
+		var norm_vp_right_y = normalize_y(vp_right_x, vp_right_y, vp_right_z);
+		var norm_vp_right_z = normalize_z(vp_right_x, vp_right_y, vp_right_z);
+		
+		var vp_up_x = cross_x(norm_vp_right_y, norm_vp_right_z, norm_cam_y, norm_cam_z);
+		var vp_up_y = cross_y(norm_vp_right_x, norm_vp_right_z, norm_cam_x, norm_cam_z);
+		var vp_up_z = cross_z(norm_vp_right_x, norm_vp_right_y, norm_cam_x, norm_cam_y);
+		
+		var norm_vp_up_x = normalize_x(vp_up_x, vp_up_y, vp_up_z);
+		var norm_vp_up_y = normalize_y(vp_up_x, vp_up_y, vp_up_z);
+		var norm_vp_up_z = normalize_z(vp_up_x, vp_up_y, vp_up_z);
+		
+		var field_of_view_radians = this.constants.MATH_PI * (camera[6] / 180);
+		var half_width = this.constants.WIDTH / 2;
+		var half_height = this.constants.HEIGHT / 2;
+		
+		// Range from -0.5 to 0.5
+		var right_tilt = (this.thread.x - half_width) / this.constants.WIDTH;
+		var up_tilt = (this.thread.y - half_height) / this.constants.HEIGHT;
+		
+		var right_tilt_radians = right_tilt * field_of_view_radians;
+		var up_tilt_radians = up_tilt * field_of_view_radians;
+		
+		// This ranges between -1 to 1
+		var extra_right_component = Math.tan(right_tilt_radians);
+		var extra_up_component = Math.tan(up_tilt_radians);
+		
+		var new_x_component = norm_cam_x + extra_right_component * norm_vp_right_x + extra_up_component * norm_vp_up_x;
+		var new_y_component = norm_cam_y + extra_right_component * norm_vp_right_y + extra_up_component * norm_vp_up_y;
+		var new_z_component = norm_cam_z + extra_right_component * norm_vp_right_z + extra_up_component * norm_vp_up_z;
+		
+		var norm_ray_x = normalize_x(new_x_component, new_y_component, new_z_component);
+		var norm_ray_y = normalize_y(new_x_component, new_y_component, new_z_component);
+		var norm_ray_z = normalize_z(new_x_component, new_y_component, new_z_component);
+		
+		// At this point:
+		// ray.point = camera.point
+		// ray.vector = norm_ray 
+		
+		var closest_dist = this.constants.INFINITY;
+		var closest_object_id = -1;
+
+		// Checks if the ray thrown intersects with any objects, and to get the distance of the
+		// closest object it intersects with
+		for (var i = 0; i < this.constants.OBJCOUNT; i++) {
+			
+			var my_dist = sphere_intersection(objects[c + i * this.constants.OBJECT_SKIP + 9], 
+											  objects[c + i * this.constants.OBJECT_SKIP + 10], 
+											  objects[c + i * this.constants.OBJECT_SKIP + 11], 
+											  objects[c + i * this.constants.OBJECT_SKIP + 12], 
+											  camera[0], camera[1], camera[2],
+											  norm_ray_x, norm_ray_y, norm_ray_z);
+			
+			if (closest_dist < 0 || (my_dist < closest_dist && my_dist > 0)) {
+				closest_dist = my_dist;
+				closest_object_id = i;
+			}
+		}
+		
+		if (closest_dist < 0) {
+		
+			// Should the ray not hit any object, we return the background lighting color
+			this.color(1, 1, 1);
+		} else {
+			
+			// Else, we become immediately curious about the point at which we hit the object
+			var intersect_x = camera[0] + norm_ray_x * closest_dist;
+			var intersect_y = camera[1] + norm_ray_y * closest_dist;
+			var intersect_z = camera[2] + norm_ray_z * closest_dist;
+			
+			// And the normal vector at that point of intersection
+			var sphere_normal_x = intersect_x - objects[c + closest_object_id * this.constants.OBJECT_SKIP + 9];
+			var sphere_normal_y = intersect_y - objects[c + closest_object_id * this.constants.OBJECT_SKIP + 10];
+			var sphere_normal_z = intersect_z - objects[c + closest_object_id * this.constants.OBJECT_SKIP + 11];
+			
+			// The normalized version of the normal surface vector
+			var norm_normal_x = normalize_x(sphere_normal_x, sphere_normal_y, sphere_normal_z);
+			var norm_normal_y = normalize_y(sphere_normal_x, sphere_normal_y, sphere_normal_z);
+			var norm_normal_z = normalize_z(sphere_normal_x, sphere_normal_y, sphere_normal_z);
+			
+			// We might also be curious about the point at which the refracted light leaves the object
+			// For simplicity, we consider the case where refraction index = 1 => equivalent with air
+			var distance_to_other_side = dot_product(norm_ray_x, norm_ray_y, norm_ray_z, -sphere_normal_x, -sphere_normal_y, -sphere_normal_z) * 
+										 2 * objects[c + closest_object_id * this.constants.OBJECT_SKIP + 12];
+										 
+			var leave_x = intersect_x + distance_to_other_side * norm_ray_x;
+			var leave_y = intersect_y + distance_to_other_side * norm_ray_y;
+			var leave_z = intersect_z + distance_to_other_side * norm_ray_z;
+			
+			// At this point, the point is guaranteed its ambient color
+			// Note: Using material ambient property
+			// Note: We use opacity to determine the illumiance on the ambient property
+			
+			var current_opacity = objects[c + closest_object_id * this.constants.OBJECT_SKIP + 8];
+			var current_ambient = objects[c + closest_object_id * this.constants.OBJECT_SKIP + 7];
+			
+			var ambient_r = ambient_intensity(current_opacity, lights[c + 3], 
+											  current_ambient, objects[c + closest_object_id * this.constants.OBJECT_SKIP + 2]);
+			var ambient_g = ambient_intensity(current_opacity, lights[c + 4], 
+											  current_ambient, objects[c + closest_object_id * this.constants.OBJECT_SKIP + 3]);
+			var ambient_b = ambient_intensity(current_opacity, lights[c + 5], 
+											  current_ambient, objects[c + closest_object_id * this.constants.OBJECT_SKIP + 4]);
+
+			// We are also curious about the direction to the light
+			var to_light_x = normalize_x(lights[c + 0] - intersect_x, lights[c + 1] - intersect_y, lights[c + 2] - intersect_z);
+			var to_light_y = normalize_y(lights[c + 0] - intersect_x, lights[c + 1] - intersect_y, lights[c + 2] - intersect_z);
+			var to_light_z = normalize_z(lights[c + 0] - intersect_x, lights[c + 1] - intersect_y, lights[c + 2] - intersect_z);
+			
+			// And the direction of the light to the intersection
+			var from_light_x = normalize_x(intersect_x - lights[c + 0], intersect_y - lights[c + 1], intersect_z - lights[c + 2]);
+			var from_light_y = normalize_y(intersect_x - lights[c + 0], intersect_y - lights[c + 1], intersect_z - lights[c + 2]);
+			var from_light_z = normalize_z(intersect_x - lights[c + 0], intersect_y - lights[c + 1], intersect_z - lights[c + 2]);
+			
+			// As well as the direction of the reflected light from surface
+			var reflect_light_x = reflect_x(from_light_x, from_light_y, from_light_z, norm_normal_x, norm_normal_y, norm_normal_z);
+			var reflect_light_y = reflect_y(from_light_x, from_light_y, from_light_z, norm_normal_x, norm_normal_y, norm_normal_z);
+			var reflect_light_z = reflect_z(from_light_x, from_light_y, from_light_z, norm_normal_x, norm_normal_y, norm_normal_z);
+			
+			var light_dot_normal = dot_product(to_light_x, to_light_y, to_light_z, norm_normal_x, norm_normal_y, norm_normal_z);
+			
+			// Now, we would like to discover if an intersection with another object exists in the path from the
+			// intersection to the light source
+			// This only makes sense if light_dot_normal is positive
+			
+			var diffuse_r = 0;
+			var diffuse_g = 0;
+			var diffuse_b = 0;
+			
+			var specular_r = 0;
+			var specular_g = 0;
+			var specular_b = 0;
+			
+			var refraction_r = 0;
+			var refraction_g = 0;
+			var refraction_b = 0;
+			
+			// In the event where the opacity is less than 1, we are also interested to know if the 
+			// light source that passes through it will hit another object
+			// For simplicity, we take the ambient portion of the refracted light only
+			if (current_opacity < 1) {
+				
+				// Now we want to know if there is an intersection with another object
+				var next_closest_dist = this.constants.INFINITY;
+				var next_closest_object_id = -1;
+
+				// Checks if the ray thrown intersects with any objects, and to get the distance of the
+				// closest object it intersects with
+				for (var j = 0; j < this.constants.OBJCOUNT; j++) {
+					
+					var next_my_dist = sphere_intersection(objects[c + j * this.constants.OBJECT_SKIP + 9], 
+														   objects[c + j * this.constants.OBJECT_SKIP + 10], 
+														   objects[c + j * this.constants.OBJECT_SKIP + 11], 
+														   objects[c + j * this.constants.OBJECT_SKIP + 12], 
+														   leave_x, leave_y, leave_z,
+														   norm_ray_x, norm_ray_y, norm_ray_z);
+					
+					if (next_closest_dist < 0 || (next_my_dist < next_closest_dist && next_my_dist > 0)) {
+						next_closest_dist = next_my_dist;
+						next_closest_object_id = j;
+					}
+				}
+				
+				
+				if (next_closest_dist < 0) {
+					
+					// In this case, there is no intersection with another object for the refracted light
+					// Hence, we give it the background color, factored with the remaining illuminance
+					refraction_r = (1 - current_opacity) * 1;
+					refraction_g = (1 - current_opacity) * 1;
+					refraction_b = (1 - current_opacity) * 1;
+					
+				} else {
+				
+					// In this case, we take the ambient portion of the intersecting object only
+					// for simplicity - this is usually good enough
+					
+					var next_ambient = objects[c + next_closest_object_id * this.constants.OBJECT_SKIP + 7];
+							
+					refraction_r = ambient_intensity(1 - current_opacity, lights[c + 3], 
+										next_ambient, objects[c + next_closest_object_id * this.constants.OBJECT_SKIP + 2]);
+												
+					refraction_g = ambient_intensity(1 - current_opacity, lights[c + 4], 
+										next_ambient, objects[c + next_closest_object_id * this.constants.OBJECT_SKIP + 3]);
+												
+					refraction_b = ambient_intensity(1 - current_opacity, lights[c + 5], 
+										next_ambient, objects[c + next_closest_object_id * this.constants.OBJECT_SKIP + 4]);
+							
+				}
+			}
+			
+			// We check if the surface normal is in the lit-ed half
+			if (light_dot_normal > 0) {
+				var closest_dist = this.constants.INFINITY;
+				
+				for (var i = 0; i < this.constants.OBJCOUNT; i++) {
+				
+					var my_dist = sphere_intersection(objects[c + i * this.constants.OBJECT_SKIP + 9], 
+													  objects[c + i * this.constants.OBJECT_SKIP + 10], 
+													  objects[c + i * this.constants.OBJECT_SKIP + 11], 
+													  objects[c + i * this.constants.OBJECT_SKIP + 12], 
+													  intersect_x, intersect_y, intersect_z,
+													  -to_light_x, to_light_y, to_light_z);
+				
+					if (closest_dist < 0 || (my_dist < closest_dist && my_dist > 0)) {
+						closest_dist = my_dist;
+					}
+				}
+
+				// At this point, the object is also guaranteed a diffuse color
+				// In the cases where an intersection exists, 
+				// A shadow is cast instead - e.g. diffuse and specular contribution is 0
+				// Note: Using material lambertian property for diffuse
+				// Note: Replaced opacity with smoothness in scenes.js
+				// Note: We use opacity to determine illuminance
+				if (closest_dist < 0) {
+				
+					var current_diffuse = objects[c + closest_object_id * this.constants.OBJECT_SKIP + 6];
+					var current_specular = objects[c + closest_object_id * this.constants.OBJECT_SKIP + 5];
+					var current_smoothness = objects[c + closest_object_id * this.constants.OBJECT_SKIP + 1];
+				
+					diffuse_r = diffuse_intensity(current_opacity, lights[c + 3], 
+												  current_diffuse, objects[c + closest_object_id * this.constants.OBJECT_SKIP + 2], 
+												  to_light_x, to_light_y, to_light_z, norm_normal_x, norm_normal_y, norm_normal_z);
+												  
+					diffuse_g = diffuse_intensity(current_opacity, lights[c + 4], 
+												  current_diffuse, objects[c + closest_object_id * this.constants.OBJECT_SKIP + 3], to_light_x, to_light_y, 
+												  to_light_z, norm_normal_x, norm_normal_y, norm_normal_z);
+												  
+					diffuse_b = diffuse_intensity(current_opacity, lights[c + 5], 
+												  current_diffuse, objects[c + closest_object_id * this.constants.OBJECT_SKIP + 4], to_light_x, to_light_y, 
+												  to_light_z, norm_normal_x, norm_normal_y, norm_normal_z);
+					
+					
+					specular_r = specular_intensity(current_opacity, lights[c + 3], 
+													current_specular, objects[c + closest_object_id * this.constants.OBJECT_SKIP + 2],reflect_light_x, reflect_light_y, reflect_light_z, -norm_ray_x, -norm_ray_y, -norm_ray_z, 
+													current_smoothness);
+													
+					specular_g = specular_intensity(current_opacity, lights[c + 4], 
+													current_specular, objects[c + closest_object_id * this.constants.OBJECT_SKIP + 3], reflect_light_x, reflect_light_y, reflect_light_z, -norm_ray_x, -norm_ray_y, -norm_ray_z, 
+													current_smoothness);
+													
+					specular_b = specular_intensity(current_opacity, lights[c + 5], 
+													current_specular, objects[c + closest_object_id * this.constants.OBJECT_SKIP + 4], reflect_light_x, reflect_light_y, reflect_light_z, -norm_ray_x, -norm_ray_y, -norm_ray_z, 
+													current_smoothness);
+				}
+			}
+			
+			// Having computed the ambient, diffuse and specular colors for that pixel
+			// We will sum them up and draw it
+			var final_r = ambient_r + diffuse_r + specular_r + refraction_r;
+			var final_g = ambient_g + diffuse_g + specular_g + refraction_g;
+			var final_b = ambient_b + diffuse_b + specular_b + refraction_b;
+			
+			final_r = Math.min(final_r, 1);
+			final_g = Math.min(final_g, 1);
+			final_b = Math.min(final_b, 1);
+			
+			this.color(final_r, final_g, final_b);
+		}
+	
+	}
+	
+	
+	
+	var my_kernel = gpu.createKernel(ray_tracer, create_opt("gpu"));
+	var my_core = gpu.createKernel(ray_tracer, create_opt("cpu"));
+	
+	my_kernel(camera, lights, objects);
+	var canvas = my_kernel.getCanvas();
+	document.getElementsByTagName('body')[0].appendChild(canvas);
+	
+	var loop_y = 0;
+	var loop_z = 0;
+	
+	var f = document.querySelector("#fps");
+	var counter = 0;
+	var start_time = 0;
+	var end_time = 0;
+	
+	function render_loop() {
+	
+		
+		if (counter === 0) {
+			var date = new Date();
+			start_time = date.getTime();
+		}
+		
+		if (counter === 100) {
+			var date = new Date();
+			end_time = date.getTime();
+			f.innerHTML = end_time - start_time;
+		}
+		
+		
+		//f.innerHTML = fps.getFPS();
+		
+		var cv = document.getElementsByTagName("canvas")[0];
+		var bdy = cv.parentNode;
+		var newCanvas = undefined;
+		
+		if (selection === "gpu") {
+			
+			my_kernel(camera, lights, objects);
+			newCanvas = my_kernel.getCanvas();
+			
+		} else {
+			my_core(camera, lights, objects);
+			newCanvas = my_core.getCanvas();
+		}
+	
+		bdy.replaceChild(newCanvas, cv);
+			
+		objects[1 + 1 * object_skip + 10] = all_rotational_centers[1][1] - 2 * Math.cos(loop_y);
+		objects[1 + 1 * object_skip + 11] = all_rotational_centers[1][2] + 2 * Math.sin(loop_z);
+			
+		objects[1 + 2 * object_skip + 9] = all_rotational_centers[2][0] + 2 * Math.sin(loop_y);
+		objects[1 + 2 * object_skip + 11] = all_rotational_centers[2][2] + 2 * Math.cos(loop_z);
+			
+		loop_y = (loop_y + 0.01) % (2 * Math.PI);
+		loop_z = (loop_z + 0.01) % (2 * Math.PI);
+			
+		counter++;
+			
+		//setTimeout(render_loop, 50);
+		requestAnimationFrame(render_loop);
+	}
+	
+	window.onload = render_loop;
+	
+	document.addEventListener("keydown", function(event) {
+	
+		var key_value = event.which || event.keyCode;
+		var key_pressed = String.fromCharCode(key_value);
+		
+		var up_component = 0;
+		var right_component = 0;
+		var forward_component = 0;
+		
+		// For moving camera
+		if (key_pressed === "A") {
+			right_component = -0.2;
+		} else if (key_pressed === "D") {
+			right_component = 0.2;
+		} else if (key_pressed === "S") {
+			up_component = -0.2;
+		} else if (key_pressed === "W") {
+			up_component = 0.2;
+		} else if (key_pressed === "Q") {
+			forward_component = -0.2;
+		} else if (key_pressed === "E") {
+			forward_component = 0.2;
+		}
+		
+		// Realign camera's direction to face center orb
+		var old_cam_vector_x = camera[3];
+		var old_cam_vector_y = camera[4];
+		var old_cam_vector_z = camera[5];
+		
+		if (right_component !== 0) {
+		
+			// Update direction
+			var cam_x = -right_component * norm_vp_right_x + old_cam_vector_x * dist_to_center;
+			var cam_y = -right_component * norm_vp_right_y + old_cam_vector_y * dist_to_center;
+			var cam_z = -right_component * norm_vp_right_z + old_cam_vector_z * dist_to_center;
+			
+			norm_cam_x = normalize_x(cam_x, cam_y, cam_z);
+			norm_cam_y = normalize_y(cam_x, cam_y, cam_z);
+			norm_cam_z = normalize_z(cam_x, cam_y, cam_z);
+			
+			camera[3] = norm_cam_x;
+			camera[4] = norm_cam_y;
+			camera[5] = norm_cam_z;
+				
+			// Move camera's position by a small bit, in either right direction or up direction
+			camera[0] = camera[0] + right_component * norm_vp_right_x + up_component * norm_vp_up_x;
+			camera[1] = camera[1] + right_component * norm_vp_right_y + up_component * norm_vp_up_y;
+			camera[2] = camera[2] + right_component * norm_vp_right_z + up_component * norm_vp_up_z;
+			
+		} else if (up_component !== 0) {
+			
+			// Update direction
+			var cam_x = -up_component * norm_vp_up_x + old_cam_vector_x * dist_to_center;
+			var cam_y = -up_component * norm_vp_up_y + old_cam_vector_y * dist_to_center;
+			var cam_z = -up_component * norm_vp_up_z + old_cam_vector_z * dist_to_center;
+			
+			if (cam_x * old_cam_vector_x >= 0 && cam_z * old_cam_vector_z >= 0) {					
+				norm_cam_x = normalize_x(cam_x, cam_y, cam_z);
+				norm_cam_y = normalize_y(cam_x, cam_y, cam_z);
+				norm_cam_z = normalize_z(cam_x, cam_y, cam_z);
+				
+				camera[3] = norm_cam_x;
+				camera[4] = norm_cam_y;
+				camera[5] = norm_cam_z;				
+						
+				// Move camera's position by a small bit, in either right direction or up direction
+				camera[0] = camera[0] + right_component * norm_vp_right_x + up_component * norm_vp_up_x;
+				camera[1] = camera[1] + right_component * norm_vp_right_y + up_component * norm_vp_up_y;
+				camera[2] = camera[2] + right_component * norm_vp_right_z + up_component * norm_vp_up_z;
+			}
+			
+		} else if (forward_component !== 0) {
+			
+			// Update position, no change to direction vector
+			camera[0] = camera[0] + forward_component * camera[3];
+			camera[1] = camera[1] + forward_component * camera[4];
+			camera[2] = camera[2] + forward_component * camera[5];
+			
+			// Update the distance to center of orb
+			dist_to_center = dist_to_center - forward_component;
+		}
+		
+		// Update right and up vectors
+		vp_right_x = cross_x(norm_cam_y, norm_cam_z, 1, 0);
+		vp_right_y = cross_y(norm_cam_x, norm_cam_z, 0, 0);
+		vp_right_z = cross_z(norm_cam_x, norm_cam_y, 0, 1);
+		
+		norm_vp_right_x = normalize_x(vp_right_x, vp_right_y, vp_right_z);
+		norm_vp_right_y = normalize_y(vp_right_x, vp_right_y, vp_right_z);
+		norm_vp_right_z = normalize_z(vp_right_x, vp_right_y, vp_right_z);
+		
+		vp_up_x = cross_x(norm_vp_right_y, norm_vp_right_z, norm_cam_y, norm_cam_z);
+		vp_up_y = cross_y(norm_vp_right_x, norm_vp_right_z, norm_cam_x, norm_cam_z);
+		vp_up_z = cross_z(norm_vp_right_x, norm_vp_right_y, norm_cam_x, norm_cam_y);
+		
+		norm_vp_up_x = normalize_x(vp_up_x, vp_up_y, vp_up_z);
+		norm_vp_up_y = normalize_y(vp_up_x, vp_up_y, vp_up_z);
+		norm_vp_up_z = normalize_z(vp_up_x, vp_up_y, vp_up_z);
+		
+		// Reset right and up components
+		right_component = 0;
+		up_component = 0;
+		forward_component = 0;
+		
+	});
+	
+ 
+</script>
+
+</body>
+</html>
