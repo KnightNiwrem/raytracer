@@ -233,7 +233,7 @@
 	function diffuse_intensity(illuminance, light_color, material_diffuse, material_color, light_x, light_y, light_z, norm_x, norm_y, norm_z) {
 		var has_diffuse = light_x * norm_x + light_y * norm_y + light_z * norm_z;
 		
-		if (has_diffuse < 0.00005) {
+		if (has_diffuse < 0) {
 			return 0;
 		} else {
 			return illuminance * has_diffuse * light_color * material_diffuse * material_color;
@@ -243,7 +243,7 @@
 	function specular_intensity(illuminance, light_color, material_specular, material_color, reflect_x, reflect_y, reflect_z, view_x, view_y, view_z, smoothness) {
 		var has_specular = reflect_x * view_x + reflect_y * view_y + reflect_z * view_z;
 		
-		if (has_specular < 0.00005) {
+		if (has_specular < 0) {
 			return 0;
 		} else {
 			return illuminance * Math.pow(has_specular, smoothness) * light_color * material_specular * material_color;
