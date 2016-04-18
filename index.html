@@ -612,7 +612,7 @@
 	
 	function render_loop() {
 	
-		
+		/*
 		if (counter === 0) {
 			var date = new Date();
 			start_time = date.getTime();
@@ -623,9 +623,9 @@
 			end_time = date.getTime();
 			f.innerHTML = end_time - start_time;
 		}
+		*/
 		
-		
-		//f.innerHTML = fps.getFPS();
+		f.innerHTML = fps.getFPS();
 		
 		var cv = document.getElementsByTagName("canvas")[0];
 		var bdy = cv.parentNode;
